@@ -143,6 +143,14 @@ def red_vial_red_vial_nodos():
         .str.replace('.', '_')
     )
 
+    red_vial_gdf["source"] = (
+        red_vial_gdf["source"].astype('category').cat.codes
+    )
+
+    red_vial_gdf["target"] = (
+        red_vial_gdf["target"].astype('category').cat.codes
+    )
+
     # Obtener los nodos de inicio y fin de los segmentos en un GeoDataFrame
     #  aparte
 
@@ -199,9 +207,14 @@ def cargar_datos_redvial_200k():
 
     # Crear un grafo con los segmentos de línea
 
-    G = nx.from_pandas_edgelist(
-        red_vial_gdf,
-        edge_attr=["weight"],
+    G = nx.Graph()
+
+    G.add_weighted_edges_from(
+        zip(
+            red_vial_gdf["source"],
+            red_vial_gdf["target"],
+            red_vial_gdf["weight"],
+        )
     )
 
     return red_vial_gdf_nodes, G
@@ -330,6 +343,10 @@ def gdf_closest(gdf1, gdf2):
     gdf1_final['distance'] = distance
 
     return gdf1_final
+
+
+def euclidean(a, b):
+    return np.hypot(a[0] - b[0], a[1] - b[1])
 
 
 # ----- Conversión de coordenadas -----
@@ -573,13 +590,44 @@ if st.button("Determinar ruta:"):
 
     source = node_nearest
 
-    # Se determinan todas las rutas de cada punto a la edificación de la
-    #  edificación y construcción más cercana
-    lengths, paths = nx.multi_source_dijkstra(G, sources=list_nodes)
+    # Para optimizar se estima el nodo más cercano mediante la distancia en
+    #  línea recta y luego se calcula la ruta
+
+    # Calcular distancia directa
+    coords_dict = dict(
+        zip(
+            red_vial_gdf_nodes["node"],
+            zip(
+                red_vial_gdf_nodes["CoordX"],
+                red_vial_gdf_nodes["CoordY"],
+            )
+        )
+    )
+
+    # Nodo destino más cercano al usuario
+    dest_mas_cercano = min(
+        list_nodes,
+        key=lambda node: euclidean(coords_dict[node], (CoordX, CoordY))
+    )
+
+    # Ruta más cercana
+    path = nx.shortest_path(
+        G,
+        source=source,
+        target=dest_mas_cercano,
+        weight="weight",
+    )
+
+    distance = nx.shortest_path_length(
+        G,
+        source=source,
+        target=dest_mas_cercano,
+        weight="weight",
+    )
 
     st.session_state.ruta_calculada = {
-        "distancia": lengths[source],
-        "nodos": paths[source],
+        "distancia": distance,
+        "nodos": path,
     }
 
 # ---- Mostrar ruta si existe ----
