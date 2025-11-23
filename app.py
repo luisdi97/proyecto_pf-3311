@@ -1,23 +1,15 @@
 import streamlit as st
+import plotly.express as px
 import pandas as pd
-
 import geopandas as gpd
 import folium
-
 from streamlit_folium import st_folium
-
 import numpy as np
 import networkx as nx
 from shapely.geometry import MultiLineString, LineString, Point
 from scipy.spatial import cKDTree
-
 import pyproj
-
 import os
-
-
-# ----- Seleccionar provincia -----
-provincia = 'Heredia'
 
 
 # ----- Fuentes de datos -----
@@ -41,6 +33,18 @@ archivo_edificaciones_y_construcciones_200k = (
 #  IGN_5_CO:limiteprovincial_5k
 
 archivo_limiteprovincial_5k = os.path.join('datos', 'limiteprovincial_5k.gpkg')
+
+# ----- Mapeo ubicaciones iniciales para provincias -----
+dict_ubicaciones_iniciales = {
+    'Cartago': [9.863744662224683, -83.9134299481798],
+    'San José': [9.932865819126107, -84.0770484032477],
+    'Limón': [9.99101025451099, -83.03367232154892],
+    'Alajuela': [10.016366523904257, -84.21427237300195],
+    'Guanacaste': [10.63584872966224, -85.43251884536156],
+    'Heredia': [9.998448606539409, -84.11756704331432],
+    'Puntarenas': [9.976819848977657, -84.83894343366579],
+    'Todas': [9.932865819126107, -84.0770484032477],
+}
 
 
 # ----- Funciones para recuperar y analizar los datos -----
@@ -73,11 +77,6 @@ def red_vial_red_vial_nodos():
             limiteprovincial_gdf,
             predicate='intersects'
         )
-    )
-
-    # Reducir a una provincia
-    red_vial_gdf = (
-        red_vial_gdf.loc[red_vial_gdf['PROVINCIA'] == provincia].copy()
     )
 
     # ----- Análisis para obtener el grafo -----
@@ -249,13 +248,6 @@ def cargar_datos_edificaciones_y_construcciones_200k():
         )
     )
 
-    # Reducir a una provincia
-    edificaciones_y_construcciones_gdf = (
-        edificaciones_y_construcciones_gdf
-        .loc[edificaciones_y_construcciones_gdf['PROVINCIA'] == provincia]
-        .copy()
-    )
-
     # Determinar las edificaciones y construcciones más cercanas a cada nodo
     #  del grafo, pero más cercanos que 1000 m
 
@@ -393,11 +385,125 @@ limiteprovincial_gdf = cargar_datos_limiteprovincial_5k()
     )
 )
 
+# ----- Lista de selección en la barra lateral -----
+
+# Obtener la lista de provincias únicas
+lista_provincias = (
+    edificaciones_y_construcciones_gdf['PROVINCIA'].unique().tolist()
+)
+
+lista_provincias.sort()
+
+# Añadir la opción "Todos" al inicio de la lista
+opciones_provincias = ['Todas'] + lista_provincias
+
+# Crear el selectbox en la barra lateral
+provincia_seleccionada = st.sidebar.selectbox(
+    'Selecciona una provincia',
+    opciones_provincias
+)
+
+# ----- Filtrar datos según la selección de provincia -----
+
+if provincia_seleccionada != 'Todas':
+    # Filtrar los datos para la provincia seleccionada
+    edif_filtrados = (
+        edificaciones_y_construcciones_gdf[
+            edificaciones_y_construcciones_gdf['PROVINCIA'] ==
+            provincia_seleccionada
+        ]
+    )
+else:
+    # No aplicar filtro
+    edif_filtrados = edificaciones_y_construcciones_gdf.copy()
+
+# ----- Selección de las categorías -----
+
+lista_categorias = (
+    edif_filtrados['categoria'].dropna().unique().tolist()
+)
+
+lista_categorias.sort()
+
+categorias_multiselect = (
+    st.sidebar.multiselect("Seleccione las categorías", lista_categorias)
+)
+
+# ----- Filtrar datos según la selección de categorías -----
+
+if len(categorias_multiselect) != 0:
+    # Filtrar los datos para las categorías seleccionadas
+    edif_filtrados = (
+        edif_filtrados[
+            edif_filtrados['categoria'].isin(categorias_multiselect)
+        ]
+    )
+
+# ----- Tabla de edificaciones y construcciones por provincia -----
+
+# Mostrar la tabla
+st.subheader('Edificaciones y construcciones por provincia')
+st.dataframe(edif_filtrados, hide_index=True)
+
+# ----- Gráfico de pastel de categorías de edificaciones y construcciones por
+# provincia -----
+
+# Cálculo del conteo por categoría
+edif_filtrados_conteo = (
+    edif_filtrados
+    .groupby('categoria')['geometry']
+    .count()
+    .sort_values(ascending=True)
+    .reset_index()
+)
+
+# Creación del gráfico de pastel
+fig = px.pie(
+    edif_filtrados_conteo,
+    names='categoria',
+    values='geometry',
+    title='Distribución de categorías de edificios o construcciones',
+    labels={'categoria': 'Categoría', 'geometry': 'Cantidad'}
+)
+
+# Atributos globales de la figura
+fig.update_layout(
+    legend_title_text='Categoría'
+)
+
+# Atributos de las propiedades visuales
+fig.update_traces(textposition='inside', textinfo='percent')
+
+# Mostrar el gráfico
+st.subheader(
+    'Distribución de categorías de edificaciones y construcciones por'
+    ' provincia'
+)
+st.plotly_chart(fig)
+
+# ----- Mapa con folium -----
+
+# Crear el mapa interactivo con las edificaciones y construcciones al mapa
+mapa = edif_filtrados.explore(
+    name='Edificaciones y Construcciones',
+    marker_type='circle',
+    marker_kwds={'radius': 20, 'color': 'red'},
+    tooltip=['categoria', 'nombre'],
+    popup=True
+)
+
+# Agregar el control de capas al mapa
+folium.LayerControl().add_to(mapa)
+
+# Mostrar el mapa
+st.subheader('Mapa de edificaciones y construcciones por provincia')
+st_folium(mapa)
+
 # ----- Ruta más corta con el grafo -----
 
 # Obtener la lista de categorías de edificaciones y construcciones
 lista_categorias = (
-    edificaciones_y_construcciones_gdf['categoria'].dropna().unique().tolist()
+    edif_filtrados['categoria'].dropna().unique().tolist()
 )
 
 lista_categorias.sort()
@@ -412,9 +518,9 @@ st.title("Haga clic en el mapa para seleccionar una ubicación")
 
 # Inicializar estado
 if "marker_location" not in st.session_state:
-    st.session_state.marker_location = [
-        9.998448606539409, -84.11756704331432
-    ]
+    st.session_state.marker_location = (
+        dict_ubicaciones_iniciales[provincia_seleccionada]
+    )
 
 # Crear mapa centrado en la última ubicación
 m = folium.Map(location=st.session_state.marker_location, zoom_start=20)
@@ -445,10 +551,10 @@ if "ruta_calculada" not in st.session_state:
 
 if st.button("Determinar ruta:"):
     list_nodes = (
-        edificaciones_y_construcciones_gdf
+        edif_filtrados
         .loc[
             (
-                edificaciones_y_construcciones_gdf['categoria'] ==
+                edif_filtrados['categoria'] ==
                 categoria_seleccionada
             ),
             'node'
@@ -481,7 +587,7 @@ if st.button("Determinar ruta:"):
 if st.session_state.ruta_calculada:
     st.write(
         "La distancia de la ruta más corta es: "
-        f"{st.session_state.ruta_calculada['distancia']:.2f}"
+        f"{st.session_state.ruta_calculada['distancia']:.2f} metros"
     )
 
     # Obtener nodos de la ruta
