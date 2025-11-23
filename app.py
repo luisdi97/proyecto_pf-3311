@@ -202,7 +202,6 @@ def cargar_datos_redvial_200k():
     G = nx.from_pandas_edgelist(
         red_vial_gdf,
         edge_attr=["weight"],
-        create_using=nx.MultiGraph(),
     )
 
     return red_vial_gdf_nodes, G
