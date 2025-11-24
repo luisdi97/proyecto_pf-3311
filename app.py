@@ -143,14 +143,6 @@ def red_vial_red_vial_nodos():
         .str.replace('.', '_')
     )
 
-    red_vial_gdf["source"] = (
-        red_vial_gdf["source"].astype('category').cat.codes
-    )
-
-    red_vial_gdf["target"] = (
-        red_vial_gdf["target"].astype('category').cat.codes
-    )
-
     # Obtener los nodos de inicio y fin de los segmentos en un GeoDataFrame
     #  aparte
 
@@ -187,11 +179,65 @@ def red_vial_red_vial_nodos():
 
     red_vial_gdf_nodes = red_vial_gdf_nodes.drop_duplicates(subset=['node'])
 
+    red_vial_gdf_nodes['node_id'] = (
+        red_vial_gdf_nodes['node'].astype('category').cat.codes
+    )
+
+    red_vial_gdf_nodes_node_id = (
+        red_vial_gdf_nodes.loc[:, ['node', 'node_id']].copy()
+    )
+
+    red_vial_gdf_nodes_node_id_temp = (
+        red_vial_gdf_nodes_node_id.rename(columns={'node': 'source'})
+    )
+
+    red_vial_gdf = (
+        red_vial_gdf.merge(
+            red_vial_gdf_nodes_node_id_temp,
+            on='source',
+        )
+    )
+
+    red_vial_gdf['source'] = red_vial_gdf['node_id']
+
+    red_vial_gdf = (
+        red_vial_gdf
+        .loc[:, ~(red_vial_gdf.columns.isin(['node_id']))]
+        .copy()
+    )
+
+    red_vial_gdf_nodes_node_id_temp = (
+        red_vial_gdf_nodes_node_id.rename(columns={'node': 'target'})
+    )
+
+    red_vial_gdf = (
+        red_vial_gdf.merge(
+            red_vial_gdf_nodes_node_id_temp,
+            on='target',
+        )
+    )
+
+    red_vial_gdf['target'] = red_vial_gdf['node_id']
+
+    red_vial_gdf = (
+        red_vial_gdf
+        .loc[:, ~(red_vial_gdf.columns.isin(['node_id']))]
+        .copy()
+    )
+
     red_vial_gdf_nodes = (
         red_vial_gdf_nodes
         .rename(
             columns={'node_Point_X': 'CoordX', 'node_Point_Y': 'CoordY'}
         )
+    )
+
+    red_vial_gdf_nodes['node'] = red_vial_gdf_nodes['node_id']
+
+    red_vial_gdf_nodes = (
+        red_vial_gdf_nodes
+        .loc[:, ~(red_vial_gdf_nodes.columns.isin(['node_id']))]
+        .copy()
     )
 
     return red_vial_gdf, red_vial_gdf_nodes
@@ -211,9 +257,9 @@ def cargar_datos_redvial_200k():
 
     G.add_weighted_edges_from(
         zip(
-            red_vial_gdf["source"],
-            red_vial_gdf["target"],
-            red_vial_gdf["weight"],
+            red_vial_gdf['source'],
+            red_vial_gdf['target'],
+            red_vial_gdf['weight'],
         )
     )
 
@@ -338,15 +384,11 @@ def gdf_closest(gdf1, gdf2):
 
     gdf1 = gdf1.reset_index(drop=True)
 
-    gdf1_final = gdf1.join(gdf2_closest)
+    gdf1_final = gdf1.join(gdf2_closest, rsuffix='_2')
 
     gdf1_final['distance'] = distance
 
     return gdf1_final
-
-
-def euclidean(a, b):
-    return np.hypot(a[0] - b[0], a[1] - b[1])
 
 
 # ----- Conversión de coordenadas -----
@@ -410,7 +452,7 @@ lista_provincias = (
 
 lista_provincias.sort()
 
-# Añadir la opción "Todos" al inicio de la lista
+# Añadir la opción 'Todas' al inicio de la lista
 opciones_provincias = ['Todas'] + lista_provincias
 
 # Crear el selectbox en la barra lateral
@@ -442,7 +484,7 @@ lista_categorias = (
 lista_categorias.sort()
 
 categorias_multiselect = (
-    st.sidebar.multiselect("Seleccione las categorías", lista_categorias)
+    st.sidebar.multiselect('Seleccione las categorías', lista_categorias)
 )
 
 # ----- Filtrar datos según la selección de categorías -----
@@ -530,10 +572,10 @@ categoria_seleccionada = st.selectbox(
     lista_categorias
 )
 
-st.title("Haga clic en el mapa para seleccionar una ubicación")
+st.title('Haga clic en el mapa para seleccionar una ubicación')
 
 # Inicializar estado
-if "marker_location" not in st.session_state:
+if 'marker_location' not in st.session_state:
     st.session_state.marker_location = (
         dict_ubicaciones_iniciales[provincia_seleccionada]
     )
@@ -544,40 +586,28 @@ m = folium.Map(location=st.session_state.marker_location, zoom_start=20)
 # Agregar marcador en la posición actual
 folium.Marker(
     location=st.session_state.marker_location,
-    popup="Ubicación actual",
+    popup='Ubicación actual',
 ).add_to(m)
 
 # Mostrar mapa y capturar clics
 map_data = st_folium(m, height=500, width=700)
 
 # Si el usuario hace clic, actualizar posición
-if map_data and map_data.get("last_clicked"):
-    lat = map_data["last_clicked"]["lat"]
-    lon = map_data["last_clicked"]["lng"]
+if map_data and map_data.get('last_clicked'):
+    lat = map_data['last_clicked']['lat']
+    lon = map_data['last_clicked']['lng']
     st.session_state.marker_location = [lat, lon]
 
 # Mostrar coordenadas
 lat, lon = st.session_state.marker_location
 CoordY, CoordX = latlon_to_CR.transform(lat, lon)
-st.write(f"Posición actual del marcador: X={CoordX:.2f}, Y={CoordY:.2f}")
+st.write(f'Posición actual del marcador: X={CoordX:.2f}, Y={CoordY:.2f}')
 
 # Inicializar estado
-if "ruta_calculada" not in st.session_state:
+if 'ruta_calculada' not in st.session_state:
     st.session_state.ruta_calculada = None
 
-if st.button("Determinar ruta:"):
-    list_nodes = (
-        edif_filtrados
-        .loc[
-            (
-                edif_filtrados['categoria'] ==
-                categoria_seleccionada
-            ),
-            'node'
-        ]
-        .tolist()
-    )
-
+if st.button('Determinar ruta'):
     # Se busca el nodo más cercano a ese punto y se usa como punto de inicio
     gdf_closest_source = (
         gdf_closest(
@@ -593,48 +623,72 @@ if st.button("Determinar ruta:"):
     # Para optimizar se estima el nodo más cercano mediante la distancia en
     #  línea recta y luego se calcula la ruta
 
-    # Calcular distancia directa
-    coords_dict = dict(
-        zip(
-            red_vial_gdf_nodes["node"],
-            zip(
-                red_vial_gdf_nodes["CoordX"],
-                red_vial_gdf_nodes["CoordY"],
-            )
+    # Se obtienen los nodos de las edificaciones de la categoría
+    list_nodes = (
+        edif_filtrados
+        .loc[
+            (
+                edif_filtrados['categoria'] ==
+                categoria_seleccionada
+            ),
+            'node'
+        ]
+        .tolist()
+    )
+
+    # Se seleccionan esos nodos
+    red_vial_gdf_nodes_targets = (
+        red_vial_gdf_nodes
+        .loc[red_vial_gdf_nodes['node'].isin(list_nodes)]
+        .copy()
+    )
+
+    # gdf con el nodo source
+    red_vial_gdf_nodes_source = (
+        red_vial_gdf_nodes
+        .loc[red_vial_gdf_nodes['node'] == source]
+        .copy()
+    )
+
+    # Se obtiene el más cercano
+    gdf_closest_target = (
+        gdf_closest(
+            red_vial_gdf_nodes_source,
+            red_vial_gdf_nodes_targets,
         )
     )
 
-    # Nodo destino más cercano al usuario
-    dest_mas_cercano = min(
-        list_nodes,
-        key=lambda node: euclidean(coords_dict[node], (CoordX, CoordY))
+    node_nearest = (
+        gdf_closest_target.loc[gdf_closest_target.index[0], 'node_2']
     )
+
+    target = node_nearest
 
     # Ruta más cercana
     path = nx.shortest_path(
         G,
         source=source,
-        target=dest_mas_cercano,
-        weight="weight",
+        target=target,
+        weight='weight',
     )
 
     distance = nx.shortest_path_length(
         G,
         source=source,
-        target=dest_mas_cercano,
-        weight="weight",
+        target=target,
+        weight='weight',
     )
 
     st.session_state.ruta_calculada = {
-        "distancia": distance,
-        "nodos": path,
+        'distancia': distance,
+        'nodos': path,
     }
 
 # ---- Mostrar ruta si existe ----
 if st.session_state.ruta_calculada:
     st.write(
-        "La distancia de la ruta más corta es: "
-        f"{st.session_state.ruta_calculada['distancia']:.2f} metros"
+        'La distancia de la ruta más corta es: '
+        f'{st.session_state.ruta_calculada['distancia']:.2f} metros'
     )
 
     # Obtener nodos de la ruta
@@ -644,10 +698,11 @@ if st.session_state.ruta_calculada:
         .from_dict(
             {
                 'node': nodos_ruta,
-                'orden': [len(nodos_ruta)-i-1 for i in range(len(nodos_ruta))],
             }
         )
     )
+
+    df_ruta['orden'] = df_ruta.index
 
     # Filtrar ruta
     red_vial_gdf_nodes_ruta = (
